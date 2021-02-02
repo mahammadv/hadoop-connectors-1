@@ -16,6 +16,7 @@
 
 package com.google.cloud.hadoop.fs.gcs;
 
+import com.google.cloud.hadoop.util.logging.CustomLoggingProvider;
 import com.google.cloud.hadoop.gcsio.CreateFileOptions;
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorageFileSystem;
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorageOptions;
@@ -114,9 +115,11 @@ class GoogleHadoopOutputStream extends OutputStream {
   @Override
   public void close() throws IOException {
     logger.atFiner().log("close(%s)", gcsPath);
+    CustomLoggingProvider.getInstance().log("FS_OP_CREATE FILE[" + gcsPath.toString() +"] Closing stream; size: " + statistics.getBytesWritten());
     if (out != null) {
       try {
         out.close();
+        CustomLoggingProvider.getInstance().log("FS_OP_CREATE FILE[" + gcsPath + "] Upload complete; size: " + statistics.getBytesWritten());
       } finally {
         out = null;
         channel = null;

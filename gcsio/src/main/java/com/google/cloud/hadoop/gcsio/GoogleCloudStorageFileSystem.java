@@ -34,6 +34,7 @@ import com.google.cloud.hadoop.gcsio.cooplock.CoopLockOperationDelete;
 import com.google.cloud.hadoop.gcsio.cooplock.CoopLockOperationRename;
 import com.google.cloud.hadoop.util.CheckedFunction;
 import com.google.cloud.hadoop.util.LazyExecutorService;
+import com.google.cloud.hadoop.util.logging.*;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -324,10 +325,12 @@ public class GoogleCloudStorageFileSystem {
   public void delete(URI path, boolean recursive) throws IOException {
     Preconditions.checkNotNull(path, "path can not be null");
     checkArgument(!path.equals(GCS_ROOT), "Cannot delete root path (%s)", path);
+    String logDeleteTag = "FS_OP_DELETE  [" + path + "] ";
     logger.atFiner().log("delete(path: %s, recursive: %b)", path, recursive);
 
     FileInfo fileInfo = getFileInfo(path);
     if (!fileInfo.exists()) {
+      CustomLoggingProvider.getInstance().log(logDeleteTag + "Delete failed. The path does not exist.");
       throw new FileNotFoundException("Item not found: " + path);
     }
 
@@ -358,6 +361,7 @@ public class GoogleCloudStorageFileSystem {
                       fileInfo.getPath(), DELETE_RENAME_LIST_OPTIONS, /* pageToken= */ null)
                   .getItems();
       if (!itemsToDelete.isEmpty() && !recursive) {
+        CustomLoggingProvider.getInstance().log(logDeleteTag + "Delete failed. Cannot delete non-empty directory not recursively.");
         throw new DirectoryNotEmptyException("Cannot delete a non-empty directory.");
       }
     } else {
@@ -518,6 +522,7 @@ public class GoogleCloudStorageFileSystem {
    * @throws FileNotFoundException if src does not exist.
    */
   public void rename(URI src, URI dst) throws IOException {
+    String logRenameTag = "FS_OP_RENAME  [" + src + "] to [" + dst + "] ";
     logger.atFiner().log("rename(src: %s, dst: %s)", src, dst);
     Preconditions.checkNotNull(src);
     Preconditions.checkNotNull(dst);
@@ -544,6 +549,7 @@ public class GoogleCloudStorageFileSystem {
 
     // Throw if the source file does not exist.
     if (!srcInfo.exists()) {
+      CustomLoggingProvider.getInstance().log(logRenameTag + "Rename failed. Source not found.");
       throw new FileNotFoundException("Item not found: " + src);
     }
 
@@ -560,6 +566,7 @@ public class GoogleCloudStorageFileSystem {
       dstInfo = fileInfos.get(1);
       if (!srcInfo.exists()) {
         coopLockOp.ifPresent(CoopLockOperationRename::unlock);
+        CustomLoggingProvider.getInstance().log(logRenameTag + "Rename failed. Source not found.");
         throw new FileNotFoundException("Item not found: " + src);
       }
       if (!srcInfo.isDirectory()) {

@@ -15,6 +15,7 @@
  */
 package com.google.cloud.hadoop.fs.gcs;
 
+import com.google.cloud.hadoop.util.logging.CustomLoggingProvider;
 import com.google.cloud.hadoop.gcsio.CreateFileOptions;
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorageFileSystem;
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorageItemInfo;
@@ -209,6 +210,7 @@ public class GoogleHadoopSyncableOutputStream extends OutputStream implements Sy
       logger.atFiner().log("close(): Ignoring; stream already closed.");
       return;
     }
+    CustomLoggingProvider.getInstance().log("FS_OP_CREATE FILE[" + finalGcsPath.toString() + "] Closing stream; size: " + statistics.getBytesWritten());
     commitCurrentFile();
 
     // null denotes stream closed.
@@ -228,6 +230,7 @@ public class GoogleHadoopSyncableOutputStream extends OutputStream implements Sy
         throw new IOException("Failed to delete files while closing stream", e);
       }
     }
+    CustomLoggingProvider.getInstance().log("FS_OP_CREATE FILE[" + finalGcsPath.toString() + "] Upload complete; size: " + statistics.getBytesWritten());
   }
 
   public void sync() throws IOException {

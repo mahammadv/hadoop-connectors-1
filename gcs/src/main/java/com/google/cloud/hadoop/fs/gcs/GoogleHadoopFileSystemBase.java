@@ -17,17 +17,7 @@
 package com.google.cloud.hadoop.fs.gcs;
 
 import static com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystemBase.OutputStreamType.FLUSHABLE_COMPOSITE;
-import static com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystemConfiguration.BLOCK_SIZE;
-import static com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystemConfiguration.CONFIG_KEY_PREFIXES;
-import static com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystemConfiguration.DELEGATION_TOKEN_BINDING_CLASS;
-import static com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystemConfiguration.GCS_CONFIG_PREFIX;
-import static com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystemConfiguration.GCS_FILE_CHECKSUM_TYPE;
-import static com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystemConfiguration.GCS_GLOB_ALGORITHM;
-import static com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystemConfiguration.GCS_LAZY_INITIALIZATION_ENABLE;
-import static com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystemConfiguration.GCS_OUTPUT_STREAM_SYNC_MIN_INTERVAL_MS;
-import static com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystemConfiguration.GCS_OUTPUT_STREAM_TYPE;
-import static com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystemConfiguration.GCS_WORKING_DIRECTORY;
-import static com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystemConfiguration.PERMISSIONS_TO_REPORT;
+import static com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystemConfiguration.*;
 import static com.google.cloud.hadoop.gcsio.CreateFileOptions.DEFAULT_OVERWRITE;
 import static com.google.cloud.hadoop.util.HadoopCredentialConfiguration.GROUP_IMPERSONATION_SERVICE_ACCOUNT_SUFFIX;
 import static com.google.cloud.hadoop.util.HadoopCredentialConfiguration.IMPERSONATION_SERVICE_ACCOUNT_SUFFIX;
@@ -66,6 +56,7 @@ import com.google.cloud.hadoop.util.CredentialFactory.CredentialHttpRetryInitial
 import com.google.cloud.hadoop.util.CredentialFromAccessTokenProviderClassFactory;
 import com.google.cloud.hadoop.util.GoogleCredentialWithIamAccessToken;
 import com.google.cloud.hadoop.util.HadoopCredentialConfiguration;
+import com.google.cloud.hadoop.util.logging.*;
 import com.google.cloud.hadoop.util.HttpTransportFactory;
 import com.google.cloud.hadoop.util.PropertyUtil;
 import com.google.common.annotations.VisibleForTesting;
@@ -121,6 +112,7 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.Progressable;
+import org.apache.hadoop.util.ReflectionUtils;
 
 /**
  * This class provides a Hadoop compatible File System on top of Google Cloud Storage (GCS).
@@ -149,6 +141,8 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
     implements FileSystemDescriptor {
 
   private static final GoogleLogger logger = GoogleLogger.forEnclosingClass();
+
+  private CustomLogger customLogger;
 
   static final String SCHEME = GoogleCloudStorageFileSystem.SCHEME;
 
@@ -433,6 +427,13 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
     throw new IllegalArgumentException(msg);
   }
 
+  private CustomLogger getCustomLogger(Configuration configuration) {
+    Class<? extends CustomLogger> customLoggingProviderClass
+        = configuration.getClass(CUSTOM_LOGGER_CLASS.getKey(), DefaultLoggingProvider.class,
+            CustomLogger.class).asSubclass(CustomLogger.class);
+    return ReflectionUtils.newInstance(customLoggingProviderClass, configuration);
+  }
+
   /**
    * Initializes this file system instance.
    *
@@ -452,6 +453,10 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
     checkArgument(path.getScheme().equals(getScheme()), "URI scheme not supported: %s", path);
 
     super.initialize(path, config);
+
+    CustomLogger customTokenProviderClass = getCustomLogger(config);
+    CustomLogger.setCustomLoggingProvider(customTokenProviderClass);
+    customLogger = CustomLogger.getInstance();
 
     initUri = path;
 
@@ -579,6 +584,13 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
     checkArgument(blockSize > 0, "blockSize must be a positive integer: %s", blockSize);
 
     checkOpen();
+
+    customLogger.log(CustomLogger.FSOpType.Create, CustomLogger.FSOpStatus.STARTED, hadoopPath.toString(),
+            Stream.of(new String[][] {
+                    { "permission", permission.toString() },
+                    { "overwrite", overwrite + "" },
+                    { "bufferSize", bufferSize + "" },
+            }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
 
     logger.atFiner().log(
         "create(hadoopPath: %s, overwrite: %b, bufferSize: %d [ignored])",
@@ -743,6 +755,11 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
    */
   @Override
   public boolean rename(Path src, Path dst) throws IOException {
+    String logRenameTag = "FS_OP_RENAME  [" + src + "] to [" + dst + "] ";
+    customLogger.log(CustomLogger.FSOpType.Rename, CustomLogger.FSOpStatus.STARTED, "[" + src + "] to [" + dst + "]",
+        Stream.of(new String[][] {
+        }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
+
     checkArgument(src != null, "src must not be null");
     checkArgument(dst != null, "dst must not be null");
 
@@ -751,6 +768,10 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
     // classes may not have filesystem roots equal to the global root.
     if (src.makeQualified(this).equals(getFileSystemRoot())) {
       logger.atFiner().log("rename(src: %s, dst: %s): false [src is a root]", src, dst);
+      customLogger.log(CustomLogger.FSOpType.Rename, CustomLogger.FSOpStatus.FAILED, "[" + src + "] to [" + dst + "]",
+          Stream.of(new String[][] {
+              {"Fail message", "src is a root"}
+          }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
       return false;
     }
     try {
@@ -760,8 +781,14 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
         throw e;
       }
       logger.atFiner().withCause(e).log("rename(src: %s, dst: %s): false [failed]", src, dst);
+      customLogger.log(CustomLogger.FSOpType.Rename, CustomLogger.FSOpStatus.FAILED, "[" + src + "] to [" + dst + "]",
+          Stream.of(new String[][] {
+          }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
       return false;
     }
+    customLogger.log(CustomLogger.FSOpType.Rename, CustomLogger.FSOpStatus.SUCCEEDED, "[" + src + "] to [" + dst + "]",
+        Stream.of(new String[][] {
+        }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
     return true;
   }
 
@@ -799,6 +826,12 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
   @Override
   public boolean delete(Path hadoopPath, boolean recursive) throws IOException {
     checkArgument(hadoopPath != null, "hadoopPath must not be null");
+    customLogger.log(CustomLogger.FSOpType.Delete, CustomLogger.FSOpStatus.STARTED, hadoopPath.toString(),
+        Stream.of(new String[][] {
+            {"recursive", recursive + ""}
+        }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
+
+    String logDeleteTag = "FS_OP_DELETE  [" + hadoopPath + "] ";
 
     checkOpen();
 
@@ -811,11 +844,19 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
       if (ApiErrorExtractor.INSTANCE.requestFailure(e)) {
         throw e;
       }
+      customLogger.log(CustomLogger.FSOpType.Delete, CustomLogger.FSOpStatus.FAILED, hadoopPath.toString(),
+          Stream.of(new String[][] {
+                  {"recursive", recursive + ""}
+          }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
       logger.atFiner().withCause(e).log(
           "delete(hadoopPath: %s, recursive: %b): false [failed]", hadoopPath, recursive);
       return false;
     }
     logger.atFiner().log("delete(hadoopPath: %s, recursive: %b): true", hadoopPath, recursive);
+    customLogger.log(CustomLogger.FSOpType.Delete, CustomLogger.FSOpStatus.SUCCEEDED, hadoopPath.toString(),
+        Stream.of(new String[][] {
+            {"recursive", recursive + ""}
+        }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
     return true;
   }
 

@@ -16,6 +16,7 @@
 
 package com.google.cloud.hadoop.fs.gcs;
 
+import com.google.cloud.hadoop.util.logging.CustomLogger;
 import com.google.cloud.hadoop.gcsio.CreateFileOptions;
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorageFileSystem;
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorageOptions;
@@ -27,6 +28,9 @@ import java.net.URI;
 import java.nio.channels.Channels;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.WritableByteChannel;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileSystem;
 
@@ -114,9 +118,17 @@ class GoogleHadoopOutputStream extends OutputStream {
   @Override
   public void close() throws IOException {
     logger.atFiner().log("close(%s)", gcsPath);
+    CustomLogger.getInstance().log(CustomLogger.FSOpType.Create, CustomLogger.FSOpStatus.PROGRESSING, gcsPath.toString(),
+        Stream.of(new String[][] {
+            {"bytesWritten", statistics.getBytesWritten() + ""}
+        }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
     if (out != null) {
       try {
         out.close();
+        CustomLogger.getInstance().log(CustomLogger.FSOpType.Create, CustomLogger.FSOpStatus.SUCCEEDED, gcsPath.toString(),
+            Stream.of(new String[][] {
+                {"bytesWritten", statistics.getBytesWritten() + ""}
+            }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
       } finally {
         out = null;
         channel = null;

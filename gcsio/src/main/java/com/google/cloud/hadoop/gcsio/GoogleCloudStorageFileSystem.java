@@ -65,6 +65,8 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
 /**
@@ -325,12 +327,14 @@ public class GoogleCloudStorageFileSystem {
   public void delete(URI path, boolean recursive) throws IOException {
     Preconditions.checkNotNull(path, "path can not be null");
     checkArgument(!path.equals(GCS_ROOT), "Cannot delete root path (%s)", path);
-    String logDeleteTag = "FS_OP_DELETE  [" + path + "] ";
     logger.atFiner().log("delete(path: %s, recursive: %b)", path, recursive);
 
     FileInfo fileInfo = getFileInfo(path);
     if (!fileInfo.exists()) {
-      CustomLoggingProvider.getInstance().log(logDeleteTag + "Delete failed. The path does not exist.");
+      CustomLogger.getInstance().log(CustomLogger.FSOpType.Delete, CustomLogger.FSOpStatus.FAILED, path.toString(),
+          Stream.of(new String[][] {
+              {"Error message", "Delete failed. The path does not exist."}
+          }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
       throw new FileNotFoundException("Item not found: " + path);
     }
 
@@ -361,7 +365,10 @@ public class GoogleCloudStorageFileSystem {
                       fileInfo.getPath(), DELETE_RENAME_LIST_OPTIONS, /* pageToken= */ null)
                   .getItems();
       if (!itemsToDelete.isEmpty() && !recursive) {
-        CustomLoggingProvider.getInstance().log(logDeleteTag + "Delete failed. Cannot delete non-empty directory not recursively.");
+        CustomLogger.getInstance().log(CustomLogger.FSOpType.Delete, CustomLogger.FSOpStatus.FAILED, path.toString(),
+          Stream.of(new String[][] {
+              {"Error message", "Delete failed. Cannot delete non-empty directory not recursively."}
+          }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
         throw new DirectoryNotEmptyException("Cannot delete a non-empty directory.");
       }
     } else {
@@ -549,7 +556,10 @@ public class GoogleCloudStorageFileSystem {
 
     // Throw if the source file does not exist.
     if (!srcInfo.exists()) {
-      CustomLoggingProvider.getInstance().log(logRenameTag + "Rename failed. Source not found.");
+      CustomLogger.getInstance().log(CustomLogger.FSOpType.Rename, CustomLogger.FSOpStatus.FAILED, "[" + src + "] to [" + dst + "]",
+          Stream.of(new String[][] {
+              {"Error message", "Source not found."}
+          }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
       throw new FileNotFoundException("Item not found: " + src);
     }
 
@@ -566,7 +576,10 @@ public class GoogleCloudStorageFileSystem {
       dstInfo = fileInfos.get(1);
       if (!srcInfo.exists()) {
         coopLockOp.ifPresent(CoopLockOperationRename::unlock);
-        CustomLoggingProvider.getInstance().log(logRenameTag + "Rename failed. Source not found.");
+        CustomLogger.getInstance().log(CustomLogger.FSOpType.Rename, CustomLogger.FSOpStatus.FAILED, "[" + src + "] to [" + dst + "]",
+          Stream.of(new String[][] {
+              {"Error message", "Source not found."}
+          }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
         throw new FileNotFoundException("Item not found: " + src);
       }
       if (!srcInfo.isDirectory()) {

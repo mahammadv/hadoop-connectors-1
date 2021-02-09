@@ -142,9 +142,7 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
 
   private static final GoogleLogger logger = GoogleLogger.forEnclosingClass();
 
-  private CustomLoggingProvider customLoggingProvider;
-
-
+  private CustomLogger customLogger;
 
   static final String SCHEME = GoogleCloudStorageFileSystem.SCHEME;
 
@@ -429,10 +427,10 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
     throw new IllegalArgumentException(msg);
   }
 
-  private CustomLoggingProvider getCustomLoggingProvider(Configuration configuration) {
-    Class<? extends CustomLoggingProvider> customLoggingProviderClass
-        = configuration.getClass(CUSTOM_LOGGING_PROVIDER_CLASS.getKey(), DefaultLoggingProvider.class,
-        CustomLoggingProvider.class).asSubclass(CustomLoggingProvider.class);
+  private CustomLogger getCustomLogger(Configuration configuration) {
+    Class<? extends CustomLogger> customLoggingProviderClass
+        = configuration.getClass(CUSTOM_LOGGER_CLASS.getKey(), DefaultLoggingProvider.class,
+            CustomLogger.class).asSubclass(CustomLogger.class);
     return ReflectionUtils.newInstance(customLoggingProviderClass, configuration);
   }
 
@@ -456,9 +454,9 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
 
     super.initialize(path, config);
 
-    CustomLoggingProvider customTokenProviderClass = getCustomLoggingProvider(config);
-    CustomLoggingProvider.setCustomLoggingProvider(customTokenProviderClass);
-    customLoggingProvider = CustomLoggingProvider.getInstance();
+    CustomLogger customTokenProviderClass = getCustomLogger(config);
+    CustomLogger.setCustomLoggingProvider(customTokenProviderClass);
+    customLogger = CustomLogger.getInstance();
 
     initUri = path;
 
@@ -587,8 +585,12 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
 
     checkOpen();
 
-    customLoggingProvider.log("FS_OP_CREATE FILE[" + hadoopPath.toString() + "] Creating output stream; permission: "
-        + permission.toString() + ", overwrite: " + overwrite + ", bufferSize: " + bufferSize);
+    customLogger.log(CustomLogger.FSOpType.Create, CustomLogger.FSOpStatus.STARTED, hadoopPath.toString(),
+            Stream.of(new String[][] {
+                    { "permission", permission.toString() },
+                    { "overwrite", overwrite + "" },
+                    { "bufferSize", bufferSize + "" },
+            }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
 
     logger.atFiner().log(
         "create(hadoopPath: %s, overwrite: %b, bufferSize: %d [ignored])",
@@ -754,7 +756,9 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
   @Override
   public boolean rename(Path src, Path dst) throws IOException {
     String logRenameTag = "FS_OP_RENAME  [" + src + "] to [" + dst + "] ";
-    customLoggingProvider.log(logRenameTag + "Starting rename. Copy source to destination and delete source.");
+    customLogger.log(CustomLogger.FSOpType.Rename, CustomLogger.FSOpStatus.STARTED, "[" + src + "] to [" + dst + "]",
+        Stream.of(new String[][] {
+        }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
 
     checkArgument(src != null, "src must not be null");
     checkArgument(dst != null, "dst must not be null");
@@ -764,6 +768,10 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
     // classes may not have filesystem roots equal to the global root.
     if (src.makeQualified(this).equals(getFileSystemRoot())) {
       logger.atFiner().log("rename(src: %s, dst: %s): false [src is a root]", src, dst);
+      customLogger.log(CustomLogger.FSOpType.Rename, CustomLogger.FSOpStatus.FAILED, "[" + src + "] to [" + dst + "]",
+          Stream.of(new String[][] {
+              {"Fail message", "src is a root"}
+          }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
       return false;
     }
     try {
@@ -773,10 +781,14 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
         throw e;
       }
       logger.atFiner().withCause(e).log("rename(src: %s, dst: %s): false [failed]", src, dst);
-      customLoggingProvider.log(logRenameTag + "Rename failed.");
+      customLogger.log(CustomLogger.FSOpType.Rename, CustomLogger.FSOpStatus.FAILED, "[" + src + "] to [" + dst + "]",
+          Stream.of(new String[][] {
+          }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
       return false;
     }
-    customLoggingProvider.log(logRenameTag + "Rename successful.");
+    customLogger.log(CustomLogger.FSOpType.Rename, CustomLogger.FSOpStatus.SUCCEEDED, "[" + src + "] to [" + dst + "]",
+        Stream.of(new String[][] {
+        }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
     return true;
   }
 
@@ -814,9 +826,12 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
   @Override
   public boolean delete(Path hadoopPath, boolean recursive) throws IOException {
     checkArgument(hadoopPath != null, "hadoopPath must not be null");
+    customLogger.log(CustomLogger.FSOpType.Delete, CustomLogger.FSOpStatus.STARTED, hadoopPath.toString(),
+        Stream.of(new String[][] {
+            {"recursive", recursive + ""}
+        }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
 
     String logDeleteTag = "FS_OP_DELETE  [" + hadoopPath + "] ";
-    customLoggingProvider.log(logDeleteTag + "Starting delete - recursive " + recursive);
 
     checkOpen();
 
@@ -829,13 +844,19 @@ public abstract class GoogleHadoopFileSystemBase extends FileSystem
       if (ApiErrorExtractor.INSTANCE.requestFailure(e)) {
         throw e;
       }
-      customLoggingProvider.log(logDeleteTag + "Delete failed, - recursive " + recursive);
+      customLogger.log(CustomLogger.FSOpType.Delete, CustomLogger.FSOpStatus.FAILED, hadoopPath.toString(),
+          Stream.of(new String[][] {
+                  {"recursive", recursive + ""}
+          }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
       logger.atFiner().withCause(e).log(
           "delete(hadoopPath: %s, recursive: %b): false [failed]", hadoopPath, recursive);
       return false;
     }
     logger.atFiner().log("delete(hadoopPath: %s, recursive: %b): true", hadoopPath, recursive);
-    customLoggingProvider.log(logDeleteTag + "Delete successful.");
+    customLogger.log(CustomLogger.FSOpType.Delete, CustomLogger.FSOpStatus.SUCCEEDED, hadoopPath.toString(),
+        Stream.of(new String[][] {
+            {"recursive", recursive + ""}
+        }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
     return true;
   }
 

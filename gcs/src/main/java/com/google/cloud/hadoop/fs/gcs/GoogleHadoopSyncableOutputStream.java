@@ -15,7 +15,7 @@
  */
 package com.google.cloud.hadoop.fs.gcs;
 
-import com.google.cloud.hadoop.util.logging.CustomLoggingProvider;
+import com.google.cloud.hadoop.util.logging.CustomLogger;
 import com.google.cloud.hadoop.gcsio.CreateFileOptions;
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorageFileSystem;
 import com.google.cloud.hadoop.gcsio.GoogleCloudStorageItemInfo;
@@ -38,6 +38,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.Syncable;
@@ -210,7 +213,10 @@ public class GoogleHadoopSyncableOutputStream extends OutputStream implements Sy
       logger.atFiner().log("close(): Ignoring; stream already closed.");
       return;
     }
-    CustomLoggingProvider.getInstance().log("FS_OP_CREATE FILE[" + finalGcsPath.toString() + "] Closing stream; size: " + statistics.getBytesWritten());
+    CustomLogger.getInstance().log(CustomLogger.FSOpType.Create, CustomLogger.FSOpStatus.PROGRESSING, finalGcsPath.toString(),
+        Stream.of(new String[][] {
+                {"bytesWritten", statistics.getBytesWritten() + ""}
+        }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
     commitCurrentFile();
 
     // null denotes stream closed.
@@ -230,7 +236,10 @@ public class GoogleHadoopSyncableOutputStream extends OutputStream implements Sy
         throw new IOException("Failed to delete files while closing stream", e);
       }
     }
-    CustomLoggingProvider.getInstance().log("FS_OP_CREATE FILE[" + finalGcsPath.toString() + "] Upload complete; size: " + statistics.getBytesWritten());
+    CustomLogger.getInstance().log(CustomLogger.FSOpType.Create, CustomLogger.FSOpStatus.SUCCEEDED, finalGcsPath.toString(),
+        Stream.of(new String[][] {
+            {"bytesWritten", statistics.getBytesWritten() + ""}
+        }).collect(Collectors.toMap(data -> data[0], data -> data[1])));
   }
 
   public void sync() throws IOException {

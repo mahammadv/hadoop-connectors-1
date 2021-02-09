@@ -1,7 +1,9 @@
 package com.google.cloud.hadoop.util.logging;
 
-public class DefaultLoggingProvider extends CustomLoggingProvider {
-    public void log(String logMessage) {
+import java.util.Map;
+
+public class DefaultLoggingProvider extends CustomLogger {
+    public void log(FSOpType type, FSOpStatus status, String path, Map<String, String> additionalInfo) {
         // do nothing
     }
 }

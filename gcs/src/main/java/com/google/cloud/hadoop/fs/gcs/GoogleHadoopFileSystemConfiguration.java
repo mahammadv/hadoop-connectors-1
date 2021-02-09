@@ -404,8 +404,8 @@ public class GoogleHadoopFileSystemConfiguration {
               "fs.gs.authorization.handler.properties.", ImmutableMap.of());
 
   /** Configuration key for the CSEK encryption algorithm. */
-  public static final HadoopConfigurationProperty<String> CUSTOM_LOGGING_PROVIDER_CLASS =
-      new HadoopConfigurationProperty<>("fs.gs.custom.logging.provider.class");
+  public static final HadoopConfigurationProperty<String> CUSTOM_LOGGER_CLASS =
+      new HadoopConfigurationProperty<>("fs.gs.custom.logger.class");
 
   // TODO(b/120887495): This @VisibleForTesting annotation was being ignored by prod code.
   // Please check that removing it is correct, and remove this comment along with it.
